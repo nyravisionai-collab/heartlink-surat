@@ -1,0 +1,53 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    
+    "status": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['isOnline', 'lastSeen'])",
+        
+        "isOnline": {
+          ".validate": "newData.isBoolean()"
+        },
+        
+        "lastSeen": {
+          ".validate": "newData.isNumber() || newData.isNull()"
+        },
+        
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    
+    "calls": {
+      "$callId": {
+        ".read": "auth != null && (data.child('callerId').val() == auth.uid || data.child('receiverId').val() == auth.uid)",
+        ".write": "auth != null && (newData.child('callerId').val() == auth.uid || newData.child('receiverId').val() == auth.uid)",
+        
+        "callerId": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        
+        "receiverId": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        
+        "status": {
+          ".validate": "newData.isString() && (newData.val() == 'ringing' || newData.val() == 'answered' || newData.val() == 'ended' || newData.val() == 'rejected')"
+        },
+        
+        "timestamp": {
+          ".validate": "newData.isNumber()"
+        },
+        
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}
