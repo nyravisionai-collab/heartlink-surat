@@ -5,13 +5,13 @@ import { getStorage } from 'firebase/storage'
 import { getDatabase } from 'firebase/database'
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  apiKey: "AIzaSyAvL-Dc3A83UxebIVoBBwAOr3rKGMg7tFM",
+  authDomain: "electricals-kart-164ba.firebaseapp.com",
+  projectId: "electricals-kart-164ba",
+  storageBucket: "electricals-kart-164ba.firebasestorage.app",
+  messagingSenderId: "80825721292",
+  appId: "1:80825721292:web:d4fda02c335c0713e27d69",
+  databaseURL: "https://electricals-kart-164ba-default-rtdb.firebaseio.com",
 }
 
 // Initialize Firebase
