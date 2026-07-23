@@ -54,6 +54,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setCurrentUser(null)
         setUserProfile(null)
+        setProfileLoading(false)
       }
       
       setLoading(false)

@@ -5,6 +5,7 @@
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { WebRTCService, CallStatus, CallType } from '../services/webrtc/index.js'
+import { useAuth } from './AuthContext'
 
 const CallContext = createContext()
 
@@ -17,7 +18,15 @@ export const useCall = () => {
 }
 
 export const CallProvider = ({ children }) => {
+  const { currentUser } = useAuth()
   const [service] = useState(() => new WebRTCService())
+
+  // Initialize WebRTCService with current user ID
+  useEffect(() => {
+    if (currentUser?.uid) {
+      service.initialize(currentUser.uid)
+    }
+  }, [currentUser, service])
   const [callState, setCallState] = useState(service.getStateSnapshot())
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
@@ -240,18 +249,24 @@ export const CallProvider = ({ children }) => {
     return result
   }, [service])
 
-  // Permission recovery monitoring
+  // Permission recovery monitoring (uses Permissions API, not getUserMedia)
   useEffect(() => {
     const checkPermissions = async () => {
-      const audioStatus = await service.permissions.checkAudioPermission()
-      const videoStatus = await service.permissions.checkVideoPermission()
-      if (!audioStatus || !videoStatus) {
-        // Try automatic recovery by requesting again
-        await service.permissions.requestPermissions({ audio: true, video: true })
+      if (!navigator.permissions || !navigator.permissions.query) return
+      try {
+        const micStatus = await navigator.permissions.query({ name: 'microphone' })
+        const camStatus = await navigator.permissions.query({ name: 'camera' })
+        if (micStatus.state === 'denied') {
+          service.permissions.audioPermission = 'denied'
+        }
+        if (camStatus.state === 'denied') {
+          service.permissions.videoPermission = 'denied'
+        }
+      } catch (e) {
+        // Permissions API may not support these queries; silently ignore
       }
     }
-    // Check periodically during active call
-    const interval = setInterval(checkPermissions, 10000)
+    const interval = setInterval(checkPermissions, 15000)
     return () => clearInterval(interval)
   }, [service])
 

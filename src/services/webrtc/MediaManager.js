@@ -17,15 +17,6 @@ export class MediaManager {
 
   async getDevices() {
     try {
-      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      if (tempStream) {
-        tempStream.getTracks().forEach((track) => track.stop());
-      }
-    } catch (e) {
-      // Ignore temporary permission request
-    }
-
-    try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       this.videoDevices = devices.filter((d) => d.kind === 'videoinput');
       this.audioDevices = devices.filter((d) => d.kind === 'audioinput');
@@ -77,6 +68,18 @@ export class MediaManager {
   async startVideoOnly() {
     this.audioEnabled = false;
     return this.startMediaStream({ video: true, audio: false });
+  }
+
+  /**
+   * Reuse a pre-granted MediaStream (from PermissionManager) instead of calling getUserMedia again.
+   * This avoids "Requested device not found" errors caused by rapid stop/restart cycles.
+   */
+  reuseStream(stream) {
+    if (stream && (stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0)) {
+      this.localStream = stream;
+      return true;
+    }
+    return false;
   }
 
   stopLocalStream() {
