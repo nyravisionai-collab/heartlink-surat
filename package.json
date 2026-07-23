@@ -9,8 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "predeploy": "GITHUB_PAGES=true npm run build",
-    "deploy": "gh-pages -d dist"
+    "build:pages": "GITHUB_PAGES=true npm run build",
+    "predeploy": "npm run build:pages",
+    "deploy": "node scripts/sync-pages.mjs"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.11",
