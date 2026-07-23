@@ -36,12 +36,24 @@
           ".validate": "newData.isString() && newData.val().length > 0"
         },
         
+        "callType": {
+          ".validate": "newData.isString() && (newData.val() == 'audio' || newData.val() == 'video')"
+        },
+        
         "status": {
-          ".validate": "newData.isString() && (newData.val() == 'ringing' || newData.val() == 'answered' || newData.val() == 'ended' || newData.val() == 'rejected')"
+          ".validate": "newData.isString() && (newData.val() == 'ringing' || newData.val() == 'answered' || newData.val() == 'ended' || newData.val() == 'rejected' || newData.val() == 'calling')"
         },
         
         "timestamp": {
           ".validate": "newData.isNumber()"
+        },
+        
+        "createdAt": {
+          ".validate": "newData != null"
+        },
+        
+        "endedAt": {
+          ".validate": "newData != null"
         },
         
         "$other": {

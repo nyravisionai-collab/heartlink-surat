@@ -45,6 +45,5 @@ emulator-cache/
 coverage/
 .nyc_output
 
-# PWA
-**/sw.js
-**/workbox-*.js
+# PWA (generated at build time; docs/ copies must be committed for GitHub Pages)
+# sw.js and workbox-*.js are in docs/ and should be tracked

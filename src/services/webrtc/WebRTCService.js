@@ -62,11 +62,21 @@ export class WebRTCService {
         throw new Error('Camera permission denied');
       }
 
-      // Start media stream
-      if (callType === CallType.VIDEO) {
-        await this.mediaManager.startMediaStream();
-      } else {
-        await this.mediaManager.startAudioOnly();
+      // Start media stream (reuse pre-granted stream if available to avoid double getUserMedia)
+      const preStream = this.permissions.consumePreGrantedStream();
+      if (preStream && !this.mediaManager.reuseStream(preStream)) {
+        // Pre-granted stream wasn't usable, fall back to normal request
+        if (callType === CallType.VIDEO) {
+          await this.mediaManager.startMediaStream();
+        } else {
+          await this.mediaManager.startAudioOnly();
+        }
+      } else if (!preStream) {
+        if (callType === CallType.VIDEO) {
+          await this.mediaManager.startMediaStream();
+        } else {
+          await this.mediaManager.startAudioOnly();
+        }
       }
 
       // Initialize peer connection
@@ -117,10 +127,20 @@ export class WebRTCService {
         video: callType === CallType.VIDEO,
       });
 
-      if (callType === CallType.VIDEO) {
-        await this.mediaManager.startMediaStream();
-      } else {
-        await this.mediaManager.startAudioOnly();
+      // Reuse pre-granted stream if available
+      const preStream = this.permissions.consumePreGrantedStream();
+      if (preStream && !this.mediaManager.reuseStream(preStream)) {
+        if (callType === CallType.VIDEO) {
+          await this.mediaManager.startMediaStream();
+        } else {
+          await this.mediaManager.startAudioOnly();
+        }
+      } else if (!preStream) {
+        if (callType === CallType.VIDEO) {
+          await this.mediaManager.startMediaStream();
+        } else {
+          await this.mediaManager.startAudioOnly();
+        }
       }
 
       this.peerConnection.create();

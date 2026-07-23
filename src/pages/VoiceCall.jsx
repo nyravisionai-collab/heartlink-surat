@@ -43,15 +43,18 @@ const VoiceCall = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const callType = params.get('type') || 'audio'
-    const userId = params.get('userId')
-    const callerData = location.state?.caller || { uid: userId, displayName: 'Unknown', photoURL: null, city: 'Unknown' }
+    const callerData = location.state?.caller
+    const userId = params.get('userId') || callerData?.uid
 
     if (!initialized) {
       setInitialized(true)
       if (isIncoming) {
         // Incoming call handled by context
-      } else if (userId) {
-        startCall({ ...callerData, uid: userId }, callType === 'video' ? 'video' : 'audio')
+      } else if (callerData || userId) {
+        const remoteUser = callerData
+          ? { ...callerData, uid: callerData.uid || userId }
+          : { uid: userId, displayName: 'Unknown', photoURL: null, city: 'Unknown' }
+        startCall(remoteUser, callType === 'video' ? 'video' : 'audio')
       }
     }
   }, [location, initialized, isIncoming, startCall, remoteUser])

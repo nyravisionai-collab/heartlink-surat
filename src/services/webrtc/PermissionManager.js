@@ -24,13 +24,47 @@ export class PermissionManager {
       return { audio: false, video: false };
     }
 
+    // Use the Permissions API if available to check status without triggering getUserMedia
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        if (constraints.audio !== false) {
+          const micStatus = await navigator.permissions.query({ name: 'microphone' });
+          this.audioPermission = micStatus.state === 'granted' ? PermissionStatus.GRANTED
+            : micStatus.state === 'denied' ? PermissionStatus.DENIED
+            : PermissionStatus.PROMPT;
+        }
+        if (constraints.video !== false) {
+          const camStatus = await navigator.permissions.query({ name: 'camera' });
+          this.videoPermission = camStatus.state === 'granted' ? PermissionStatus.GRANTED
+            : camStatus.state === 'denied' ? PermissionStatus.DENIED
+            : PermissionStatus.PROMPT;
+        }
+
+        // If all permissions are already granted, return immediately without calling getUserMedia
+        const audioOk = constraints.audio === false || this.audioPermission === PermissionStatus.GRANTED;
+        const videoOk = constraints.video === false || this.videoPermission === PermissionStatus.GRANTED;
+        if (audioOk && videoOk) {
+          return {
+            audio: constraints.audio === false || this.audioPermission === PermissionStatus.GRANTED,
+            video: constraints.video === false || this.videoPermission === PermissionStatus.GRANTED,
+          };
+        }
+      } catch (e) {
+        // Permissions API may not support these queries on all browsers; fall through to getUserMedia
+      }
+    }
+
+    // Fallback: prompt via getUserMedia (but DON'T immediately stop tracks)
+    // The actual media stream will be used by MediaManager.startMediaStream
+    // We store the stream so it can be reused instead of requesting again
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      // Immediately stop the temporary stream after permission check
-      stream.getTracks().forEach((track) => track.stop());
 
       this.audioPermission = constraints.audio !== false ? PermissionStatus.GRANTED : this.audioPermission;
       this.videoPermission = constraints.video !== false ? PermissionStatus.GRANTED : this.videoPermission;
+
+      // Store the stream for reuse so startMediaStream doesn't need to request again
+      this._preGrantedStream = stream;
 
       return {
         audio: this.audioPermission === PermissionStatus.GRANTED,
@@ -52,6 +86,16 @@ export class PermissionManager {
         video: this.videoPermission === PermissionStatus.GRANTED,
       };
     }
+  }
+
+  /**
+   * Returns the pre-granted media stream if available (from requestPermissions),
+   * so MediaManager can reuse it instead of calling getUserMedia again.
+   */
+  consumePreGrantedStream() {
+    const stream = this._preGrantedStream || null;
+    this._preGrantedStream = null;
+    return stream;
   }
 
   async checkAudioPermission() {

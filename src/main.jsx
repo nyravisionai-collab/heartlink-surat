@@ -4,20 +4,8 @@ import App from './App.jsx'
 import './styles/index.css'
 import './styles/animations.css'
 
-const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`
-
-// Register service worker for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(serviceWorkerUrl)
-      .then((registration) => {
-        // PWA service worker registered successfully
-      })
-      .catch((error) => {
-        console.log('SW registration failed:', error)
-      })
-  })
-}
+// Service worker registration is handled by vite-plugin-pwa (auto-update mode).
+// Do NOT manually register here — VitePWA injects registerSW.js at build time.
 
 // Error boundary for the entire app
 class ErrorBoundary extends React.Component {
