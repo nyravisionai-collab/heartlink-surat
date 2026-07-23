@@ -55,6 +55,10 @@ const PublicRoute = ({ children }) => {
   return children
 }
 
+const routerBasename = import.meta.env.BASE_URL === '/'
+  ? undefined
+  : import.meta.env.BASE_URL.replace(/\/$/, '')
+
 // App Routes Component (must be inside AuthProvider)
 const AppRoutes = () => {
   return (
@@ -154,7 +158,7 @@ const AppRoutes = () => {
 
 function App() {
   return (
-    <Router>
+    <Router basename={routerBasename}>
       <AuthProvider>
         <CallProvider>
           <ErrorBoundary>

@@ -4,10 +4,12 @@ import App from './App.jsx'
 import './styles/index.css'
 import './styles/animations.css'
 
+const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`
+
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register(serviceWorkerUrl)
       .then((registration) => {
         // PWA service worker registered successfully
       })
