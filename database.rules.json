@@ -48,6 +48,13 @@
           ".validate": false
         }
       }
+    },
+    
+    "signals": {
+      "$callId": {
+        ".read": "auth != null && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid)",
+        ".write": "auth != null && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid)"
+      }
     }
   }
 }
