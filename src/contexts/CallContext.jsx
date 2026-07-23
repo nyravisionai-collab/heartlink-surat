@@ -102,12 +102,18 @@ export const CallProvider = ({ children }) => {
     await service.answerCall(user, type)
   }, [service])
 
-  const receiveIncoming = useCallback((offerData, user, callId) => {
+  // Store an incoming call (offer + caller) without touching media/peer yet.
+  // Media + WebRTC setup happens in answerCall() once the user accepts.
+  const prepareIncoming = useCallback((callId, offer, callType, caller) => {
     setIsIncoming(true)
-    setRemoteUser(user)
-    // Handle incoming offer through service
-    service.handleRemoteOffer(offerData, callId)
+    setRemoteUser(caller)
+    service.setIncomingCall(callId, offer, callType, caller?.uid || null)
   }, [service])
+
+  // Legacy hook kept for backwards compatibility.
+  const receiveIncoming = useCallback((offerData, user, callId, callType, callerId) => {
+    prepareIncoming(callId, offerData, callType, { ...(user || {}), uid: user?.uid || callerId })
+  }, [prepareIncoming])
 
   const endCall = useCallback(async () => {
     await service.endCall()
@@ -285,6 +291,7 @@ export const CallProvider = ({ children }) => {
     startCall,
     answerCall,
     receiveIncoming,
+    prepareIncoming,
     endCall,
     rejectCall,
     toggleMute,
