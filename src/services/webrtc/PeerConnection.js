@@ -3,13 +3,29 @@
  * Wraps native RTCPeerConnection with error handling and ICE management.
  */
 
+// STUN is enough only when at least one peer is not behind a symmetric NAT.
+// For reliable connectivity (mobile carriers, CGNAT, office Wi-Fi), configure a
+// TURN relay via VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL.
+const TURN_URL = import.meta.env.VITE_TURN_URL
+const TURN_USERNAME = import.meta.env.VITE_TURN_USERNAME
+const TURN_CREDENTIAL = import.meta.env.VITE_TURN_CREDENTIAL
+
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
-];
+  ...(TURN_URL
+    ? [
+        {
+          urls: TURN_URL,
+          ...(TURN_USERNAME ? { username: TURN_USERNAME } : {}),
+          ...(TURN_CREDENTIAL ? { credential: TURN_CREDENTIAL } : {}),
+        },
+      ]
+    : []),
+]
 
 export class PeerConnectionManager {
   constructor() {

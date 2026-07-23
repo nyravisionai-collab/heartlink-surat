@@ -17,6 +17,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const VoiceCall = lazy(() => import('./pages/VoiceCall'))
 const VideoCall = lazy(() => import('./pages/VideoCall'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+import IncomingCallWatcher from './components/call/IncomingCallWatcher'
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requireProfile = true }) => {
@@ -62,8 +63,11 @@ const routerBasename = import.meta.env.BASE_URL === '/'
 // App Routes Component (must be inside AuthProvider)
 const AppRoutes = () => {
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <Routes>
+    <>
+      {/* Global incoming-call overlay (active for any authenticated user) */}
+      <IncomingCallWatcher />
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
         {/* Public routes */}
         <Route
           path="/"
@@ -152,7 +156,8 @@ const AppRoutes = () => {
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-    </Suspense>
+      </Suspense>
+    </>
   )
 }
 
