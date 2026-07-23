@@ -6,9 +6,11 @@ import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import { useUserDiscovery } from '../hooks/useUserDiscovery'
 import { setupPresence, getUserStatus } from '../firebase/presence'
+import { useCall } from '../contexts/CallContext'
 import { updateLastActive } from '../firebase/users'
 
 const HomeDashboard = () => {
+  const callContext = useCall()
   const navigate = useNavigate()
   const { currentUser, userProfile, logout } = useAuth()
   const { filteredUsers, searchQuery, loading, handleSearch, clearSearch } = useUserDiscovery()
@@ -56,14 +58,12 @@ const HomeDashboard = () => {
     navigate('/welcome', { replace: true })
   }
 
-  const handleAudioCall = (userId) => {
-    // Placeholder - will be implemented in Phase 03
-    alert('Audio calling will be available in the next phase!')
+  const handleAudioCall = (user) => {
+    navigate('/call/voice', { state: { caller: user }, replace: false })
   }
 
-  const handleVideoCall = (userId) => {
-    // Placeholder - will be implemented in Phase 03
-    alert('Video calling will be available in the next phase!')
+  const handleVideoCall = (user) => {
+    navigate('/call/video', { state: { caller: user }, replace: false })
   }
 
   const formatLastSeen = (timestamp) => {
@@ -266,7 +266,7 @@ const HomeDashboard = () => {
                       {/* Call Buttons */}
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleAudioCall(user.uid)}
+                          onClick={() => handleAudioCall(user)}
                           className="p-3 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-xl transition-colors"
                           title="Audio Call"
                         >
@@ -276,7 +276,7 @@ const HomeDashboard = () => {
                         </button>
                         
                         <button
-                          onClick={() => handleVideoCall(user.uid)}
+                          onClick={() => handleVideoCall(user)}
                           className="p-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-xl transition-colors"
                           title="Video Call"
                         >

@@ -1,7 +1,9 @@
 import React, { Suspense, lazy } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { CallProvider } from './contexts/CallContext'
 import LoadingScreen from './components/ui/LoadingScreen'
+import ErrorBoundary from './components/ui/ErrorBoundary'
 
 // Lazy load pages for code splitting
 const SplashScreen = lazy(() => import('./pages/SplashScreen'))
@@ -12,6 +14,8 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
 const ProfileSetupPage = lazy(() => import('./pages/ProfileSetupPage'))
 const HomeDashboard = lazy(() => import('./pages/HomeDashboard'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const VoiceCall = lazy(() => import('./pages/VoiceCall'))
+const VideoCall = lazy(() => import('./pages/VideoCall'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 // Protected Route Component
@@ -124,6 +128,23 @@ const AppRoutes = () => {
           }
         />
 
+        <Route
+          path="/call/voice"
+          element={
+            <ProtectedRoute>
+              <VoiceCall />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/call/video"
+          element={
+            <ProtectedRoute>
+              <VideoCall />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -135,7 +156,11 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <CallProvider>
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
+        </CallProvider>
       </AuthProvider>
     </Router>
   )

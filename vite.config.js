@@ -20,14 +20,14 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/icons/icon-192x192.svg',
+            src: '/icons/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png'
           },
           {
-            src: '/icons/icon-512x512.svg',
+            src: '/icons/icon-512x512.png',
             sizes: '512x512',
-            type: 'image/svg+xml'
+            type: 'image/png'
           }
         ]
       },
@@ -73,7 +73,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser'
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/database'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+          webrtc: [
+            './src/services/webrtc/CallState.js',
+            './src/services/webrtc/PeerConnection.js',
+            './src/services/webrtc/MediaManager.js',
+            './src/services/webrtc/PermissionManager.js',
+            './src/services/webrtc/CleanupManager.js',
+            './src/services/webrtc/FirebaseSignaling.js',
+            './src/services/webrtc/WebRTCService.js'
+          ]
+        }
+      }
+    }
   },
   optimizeDeps: {
     include: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/database']
