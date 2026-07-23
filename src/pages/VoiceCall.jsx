@@ -24,7 +24,8 @@ const VoiceCall = () => {
   const location = useLocation()
   const {
     callState, remoteUser, isIncoming, startCall, answerCall, endCall, rejectCall,
-    toggleMute, toggleCamera, CallStatus, connectionQuality, reconnectStatus, service
+    toggleMute, toggleCamera, CallStatus, connectionQuality, reconnectStatus, service,
+    switchVideoDevice, switchAudioDevice
   } = useCall()
   const [muted, setMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(true)
@@ -156,10 +157,10 @@ const VoiceCall = () => {
         <DeviceSelector
           service={service}
           onSelectVideo={(id) => {
-            service.mediaManager.selectVideoDevice(id)
+            switchVideoDevice(id)
           }}
           onSelectAudio={(id) => {
-            service.mediaManager.selectAudioDevice(id)
+            switchAudioDevice(id)
           }}
         />
       </div>

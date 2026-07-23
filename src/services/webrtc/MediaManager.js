@@ -17,7 +17,10 @@ export class MediaManager {
 
   async getDevices() {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (tempStream) {
+        tempStream.getTracks().forEach((track) => track.stop());
+      }
     } catch (e) {
       // Ignore temporary permission request
     }

@@ -24,6 +24,9 @@ class AudioFeedback {
   playTone(type, duration = 0.5) {
     if (!this.enabled || !this.audioCtx) return
     try {
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume()
+      }
       const osc = this.audioCtx.createOscillator()
       const gainNode = this.audioCtx.createGain()
       osc.connect(gainNode)
@@ -51,6 +54,16 @@ class AudioFeedback {
 
       osc.start()
       osc.stop(this.audioCtx.currentTime + duration)
+
+      // Disconnect nodes to prevent Web Audio memory leaks
+      setTimeout(() => {
+        try {
+          osc.disconnect()
+          gainNode.disconnect()
+        } catch (e) {
+          // ignore
+        }
+      }, (duration + 0.1) * 1000)
     } catch (e) {
       console.warn('Failed to play tone:', e)
     }
