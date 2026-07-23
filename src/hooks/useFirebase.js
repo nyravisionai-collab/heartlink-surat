@@ -7,7 +7,7 @@ import {
   resetPassword,
 } from '../firebase/auth'
 import { uploadProfileImage, deleteProfileImage, compressImage } from '../firebase/storage'
-import { updateUserProfile } from '../firebase/firestore'
+import { updateUserProfile, getUserProfile } from '../firebase/firestore'
 
 // Hook for authentication
 export const useAuthActions = () => {

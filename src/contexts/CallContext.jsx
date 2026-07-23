@@ -165,19 +165,31 @@ export const CallProvider = ({ children }) => {
       try {
         const newConstraints = { video: { deviceId: { exact: deviceId } }, audio: false }
         const newStream = await navigator.mediaDevices.getUserMedia(newConstraints)
-        const newVideoTracks = newStream.getVideoTracks()
-        // Replace video tracks in peer connection without recreating it
-        const senders = service.peerConnection.peerConnection?.getSenders?.()
-        if (senders) {
-          senders.forEach(sender => {
-            if (sender.track && sender.track.kind === 'video') {
-              sender.replaceTrack(newVideoTracks[0])
-            }
-          })
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        
+        if (newVideoTrack) {
+          // Stop old video tracks to prevent hardware light and resource leaks
+          current.getVideoTracks().forEach(track => track.stop())
+          
+          // Replace video track in peer connection
+          const senders = service.peerConnection.peerConnection?.getSenders?.()
+          if (senders) {
+            senders.forEach(sender => {
+              if (sender.track && sender.track.kind === 'video') {
+                sender.replaceTrack(newVideoTrack)
+              }
+            })
+          }
+          
+          // Combine existing audio tracks with the new video track
+          const combinedStream = new MediaStream([
+            ...current.getAudioTracks(),
+            newVideoTrack
+          ])
+          
+          service.mediaManager.localStream = combinedStream
+          setLocalStream(combinedStream)
         }
-        // Also update local media manager
-        service.mediaManager.localStream = newStream
-        setLocalStream(newStream)
       } catch (err) {
         console.error('Failed to switch video device:', err)
       }
@@ -191,17 +203,31 @@ export const CallProvider = ({ children }) => {
       try {
         const newConstraints = { audio: { deviceId: { exact: deviceId } }, video: false }
         const newStream = await navigator.mediaDevices.getUserMedia(newConstraints)
-        const newAudioTracks = newStream.getAudioTracks()
-        const senders = service.peerConnection.peerConnection?.getSenders?.()
-        if (senders) {
-          senders.forEach(sender => {
-            if (sender.track && sender.track.kind === 'audio') {
-              sender.replaceTrack(newAudioTracks[0])
-            }
-          })
+        const newAudioTrack = newStream.getAudioTracks()[0]
+        
+        if (newAudioTrack) {
+          // Stop old audio tracks to prevent leaks
+          current.getAudioTracks().forEach(track => track.stop())
+          
+          // Replace audio track in peer connection
+          const senders = service.peerConnection.peerConnection?.getSenders?.()
+          if (senders) {
+            senders.forEach(sender => {
+              if (sender.track && sender.track.kind === 'audio') {
+                sender.replaceTrack(newAudioTrack)
+              }
+            })
+          }
+          
+          // Combine the new audio track with existing video tracks
+          const combinedStream = new MediaStream([
+            newAudioTrack,
+            ...current.getVideoTracks()
+          ])
+          
+          service.mediaManager.localStream = combinedStream
+          setLocalStream(combinedStream)
         }
-        service.mediaManager.localStream = newStream
-        setLocalStream(newStream)
       } catch (err) {
         console.error('Failed to switch audio device:', err)
       }
