@@ -80,6 +80,12 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'terser',
+    terserOptions: {
+      mangle: {
+        // Keep the component name visible in production bundles for deployment verification.
+        reserved: ['IncomingCallWatcher']
+      }
+    },
     rollupOptions: {
       output: {
         manualChunks: {
