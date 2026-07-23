@@ -1,65 +1,91 @@
 # 🚀 Deploying Heart Link Surat to GitHub Pages
 
-This guide outlines how to deploy the **Heart Link Surat** application to **GitHub Pages** cleanly and configure your GitHub and Firebase environments.
+This guide explains how to publish **Heart Link Surat** to **GitHub Pages** using the repository's `docs/` folder.
 
 ---
 
 ## 📋 Prerequisites
 
-Before deploying, ensure you have:
-1. Pushed your latest changes to the main repository.
-2. Initialized your npm dependencies (`npm install`).
+Before deploying, make sure you have:
+1. Installed dependencies with `npm install`
+2. Pushed the branch you want GitHub Pages to publish
 
 ---
 
 ## 🛠️ Deployment Configuration
 
-We have pre-configured `package.json` with the following:
-- **`"homepage"`**: Set to `"https://nyravisionai-collab.github.io/heartlink-surat"`
-- **`"predeploy"`**: Runs `GITHUB_PAGES=true npm run build` to compile the app with `/heartlink-surat/` as the router and asset base URL.
-- **`"deploy"`**: Automatically pushes the built production bundle (`dist/` directory) to the `gh-pages` branch on your GitHub repository.
+The project is configured with:
+- **`"homepage"`**: `https://nyravisionai-collab.github.io/heartlink-surat`
+- **`"build:pages"`**: Builds the app with the correct GitHub Pages base path (`/heartlink-surat/`)
+- **`"deploy"`**: Builds the app and syncs the production files into `docs/`
+
+GitHub Pages can then serve the site directly from the selected branch's `docs/` folder.
 
 ---
 
 ## 🚀 Step-by-Step Deployment
 
-Follow these simple steps to deploy the site live:
+### Step 1: Generate the GitHub Pages Build
+Run:
 
-### Step 1: Run the Deployment Command
-In your local terminal, run:
 ```bash
 npm run deploy
 ```
+
 This command will:
-1. Automatically execute the `predeploy` script.
-2. Build the production React PWA application.
-3. Publish the build artifacts to the `gh-pages` branch on GitHub.
+1. Build the production app for GitHub Pages
+2. Copy the final static files into `docs/`
+3. Prepare the branch for GitHub Pages publishing
 
-### Step 2: Configure GitHub Repository Settings
-1. Open your browser and navigate to your repository: [nyravisionai-collab/heartlink-surat](https://github.com/nyravisionai-collab/heartlink-surat)
-2. Click on the **Settings** (gear) tab at the top of the page.
-3. On the left sidebar under the **Code and automation** section, click on **Pages**.
-4. Under the **Build and deployment** section:
-   - For **Source**, choose **Deploy from a branch** from the dropdown menu.
-   - For **Branch**, select `gh-pages` from the dropdown (this branch is created automatically after running `npm run deploy`).
-   - Leave the folder path dropdown as `/ (root)`.
-   - Click **Save**.
-5. Within 1-2 minutes, GitHub will publish your site to: **`https://nyravisionai-collab.github.io/heartlink-surat/`**
+### Step 2: Push the Deployment Branch
+Push the branch containing the updated `docs/` folder.
 
-### Step 3: Authorize Domain in Firebase Console (Crucial for Auth)
-Because Firebase Auth restricts authentication requests to authorized domains, you must authorize your GitHub Pages domain to allow login and registration:
-1. Go to the [Firebase Console](https://console.firebase.google.com/).
-2. Select your Firebase Project (`electricals-kart-164ba`).
-3. Click on **Authentication** on the left menu, then navigate to the **Settings** tab.
-4. On the left menu of Settings, click on **Authorized domains**.
-5. Click **Add domain**.
-6. Type **`nyravisionai-collab.github.io`** and click **Add**.
+Example:
+
+```bash
+git push origin <your-branch>
+```
+
+### Step 3: Configure GitHub Pages
+1. Open the repository: [nyravisionai-collab/heartlink-surat](https://github.com/nyravisionai-collab/heartlink-surat)
+2. Go to **Settings** → **Pages**
+3. Under **Build and deployment**:
+   - Set **Source** to **Deploy from a branch**
+   - Select the branch you pushed in Step 2
+   - Select the folder **`/docs`**
+   - Click **Save**
+4. Wait 1-2 minutes for GitHub Pages to publish the site
+
+The live URL will be:
+
+**`https://nyravisionai-collab.github.io/heartlink-surat/`**
 
 ---
 
-## 🔄 Updating Your Live App
-Whenever you make updates or fix bugs and want to publish them live, simply run:
+## 🔐 Firebase Authorized Domain
+
+Because Firebase Authentication only accepts approved origins, add the GitHub Pages domain in Firebase:
+
+1. Open the [Firebase Console](https://console.firebase.google.com/)
+2. Select project **`electricals-kart-164ba`**
+3. Go to **Authentication** → **Settings** → **Authorized domains**
+4. Add:
+
+```text
+nyravisionai-collab.github.io
+```
+
+---
+
+## 🔄 Updating the Live Site
+
+Whenever you want to publish changes again:
+
 ```bash
 npm run deploy
+git add docs
+git commit -m "Update GitHub Pages build"
+git push origin <your-branch>
 ```
-It will re-build and deploy your updates within seconds!
+
+If GitHub Pages is already pointing to that branch's `docs/` folder, the site will refresh automatically after the push.
