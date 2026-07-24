@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCall } from '../contexts/CallContext'
 import AvatarView from '../components/call/AvatarView'
+import RemoteAudio from '../components/call/RemoteAudio'
 import CallControls from '../components/call/CallControls'
 import ConnectionStatus from '../components/call/ConnectionStatus'
 import CallTimer from '../components/call/CallTimer'
@@ -23,7 +24,7 @@ const VoiceCall = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const {
-    callState, remoteUser, isIncoming, startCall, answerCall, endCall, rejectCall,
+    callState, remoteUser, isIncoming, remoteStream, startCall, answerCall, endCall, rejectCall,
     toggleMute, toggleCamera, CallStatus, connectionQuality, reconnectStatus, service,
     switchVideoDevice, switchAudioDevice
   } = useCall()
@@ -124,6 +125,8 @@ const VoiceCall = () => {
 
   return (
     <div className="fixed inset-0 bg-gradient-to-b from-dark-900 via-dark-950 to-dark-900 z-50 flex flex-col items-center justify-between min-h-screen-safe pb-16 pt-12 px-6">
+      <RemoteAudio stream={remoteStream} />
+
       {/* Status Bar */}
       <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
@@ -165,6 +168,7 @@ const VoiceCall = () => {
           onSelectAudio={(id) => {
             switchAudioDevice(id)
           }}
+          showVideo={false}
         />
       </div>
 
@@ -177,6 +181,7 @@ const VoiceCall = () => {
           onToggleCamera={handleToggleCamera}
           onEndCall={handleEnd}
           disabled={isFailed || isEnded}
+          showCamera={false}
           className="mb-4"
         />
         <div className="flex justify-center">

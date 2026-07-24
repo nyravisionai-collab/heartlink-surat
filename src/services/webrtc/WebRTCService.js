@@ -10,6 +10,9 @@ import FirebaseSignaling from './FirebaseSignaling.js';
 import PermissionManager from './PermissionManager.js';
 import CleanupManager from './CleanupManager.js';
 
+const CALL_TIMEOUT_MS = 60 * 1000;
+const ICE_RESTART_COOLDOWN_MS = 10 * 1000;
+
 export class WebRTCService {
   constructor(userId) {
     this.userId = userId || null;
@@ -27,12 +30,19 @@ export class WebRTCService {
     this.pendingOffer = null;
     // Remote ICE candidates that arrive before remote description is set.
     this._pendingCandidates = [];
+    this._seenRemoteCandidateKeys = new Set();
+    this._callTimeoutId = null;
+    this._iceRestarting = false;
+    this._lastIceRestartAt = 0;
   }
 
   async initialize(userId) {
-    this.userId = userId || this.userId;
-    if (this.userId && !this.signaling) {
-      this.signaling = new FirebaseSignaling(this.userId);
+    const nextUserId = userId || this.userId;
+    if (!nextUserId) return;
+
+    this.userId = nextUserId;
+    if (!this.signaling || this.signaling.userId !== nextUserId) {
+      this.signaling = new FirebaseSignaling(nextUserId);
     }
   }
 
@@ -41,26 +51,43 @@ export class WebRTCService {
    * Returns true on success. Used by both startCall and answerCall.
    */
   async _acquireMedia(callType) {
+    const needsVideo = callType === CallType.VIDEO;
+    this.mediaManager.setMediaMode({ audio: true, video: needsVideo });
+
     const permResult = await this.permissions.requestPermissions({
       audio: true,
-      video: callType === CallType.VIDEO,
+      video: needsVideo,
     });
 
     if (!permResult.audio && (callType === CallType.AUDIO || callType === CallType.VIDEO)) {
       throw new Error('Microphone permission denied');
     }
-    if (callType === CallType.VIDEO && !permResult.video) {
+    if (needsVideo && !permResult.video) {
       throw new Error('Camera permission denied');
     }
 
+    const requirements = { audio: true, video: needsVideo };
     const preStream = this.permissions.consumePreGrantedStream();
-    if (!(preStream && this.mediaManager.reuseStream(preStream))) {
-      if (callType === CallType.VIDEO) {
+    if (!(preStream && this.mediaManager.reuseStream(preStream, requirements))) {
+      if (needsVideo) {
         await this.mediaManager.startMediaStream();
       } else {
         await this.mediaManager.startAudioOnly();
       }
     }
+
+    const localStream = this.mediaManager.getLocalStream();
+    const hasAudio = localStream?.getAudioTracks?.().some((track) => track.readyState !== 'ended');
+    const hasVideo = localStream?.getVideoTracks?.().some((track) => track.readyState !== 'ended');
+
+    if (!hasAudio) {
+      throw new Error('Microphone stream unavailable');
+    }
+    if (needsVideo && !hasVideo) {
+      throw new Error('Camera stream unavailable');
+    }
+
+    this._notifyMediaUpdate();
   }
 
   async startCall(remoteUser, callType = CallType.AUDIO, callId = null) {
@@ -75,6 +102,7 @@ export class WebRTCService {
     this.remoteUserId = remoteUser.uid;
     this.pendingOffer = null;
     this._pendingCandidates = [];
+    this._seenRemoteCandidateKeys = new Set();
 
     this.callState.setType(callType);
     this.callState.setRemoteUser(remoteUser);
@@ -113,18 +141,10 @@ export class WebRTCService {
       await this.signaling.sendOffer(this.currentCallId, this.peerConnection.getLocalDescription());
       await this.signaling.updateCallStatus(this.currentCallId, 'ringing');
       this.callState.setStatus(CallStatus.RINGING);
+      this._startCallTimeout();
 
-      // Detect when the callee answers / rejects / ends the call
-      this._subscribeCallStatus((status) => {
-        const current = this.callState.status;
-        if (status === 'rejected' && current !== CallStatus.CONNECTED) {
-          this.callState.fail('Call rejected');
-          this.dispose();
-        } else if (status === 'ended' && current !== CallStatus.CONNECTED) {
-          this.callState.end();
-          this.dispose();
-        }
-      });
+      // Detect when the callee rejects / ends the call.
+      this._subscribeCallStatus((status) => this._handleLifecycleStatus(status));
     } catch (err) {
       console.error('Failed to start call:', err);
       this.callState.fail(err.message || 'Failed to start call');
@@ -142,6 +162,7 @@ export class WebRTCService {
     this.remoteUserId = callerId;
     this.pendingOffer = offer;
     this._pendingCandidates = [];
+    this._seenRemoteCandidateKeys = new Set();
 
     this.callState.setType(callType);
     this.callState.setInitiator(false);
@@ -171,20 +192,26 @@ export class WebRTCService {
       this.setupPeerEvents();
       this.setupSignaling('answerer');
 
-      // Apply the caller's stored offer (then flush any buffered candidates)
-      const offer = this.pendingOffer;
+      // Apply the caller's stored offer (then flush any buffered candidates).
+      // The normal incoming watcher stores this in pendingOffer; the fallback
+      // fetch keeps answerCall robust if the page is restored/reloaded mid-ring.
+      const offer = this.pendingOffer || await this.signaling.getOffer(this.currentCallId);
       this.pendingOffer = null;
-      if (offer) {
-        await this.peerConnection.setRemoteDescription(offer);
-        this._flushPendingCandidates();
+      if (!offer) {
+        throw new Error('Incoming call offer unavailable');
       }
+      await this.peerConnection.setRemoteDescription(offer);
+      this._flushPendingCandidates();
 
       // Create and send the answer
       await this.peerConnection.createAnswer();
       await this.signaling.sendAnswer(this.currentCallId, this.peerConnection.getLocalDescription());
 
-      // Let the caller know the call was picked up
+      // Let the caller know the call was picked up, then watch for a
+      // later hang-up from either side.
+      this._clearCallTimeout();
       await this.signaling.updateCallStatus(this.currentCallId, 'answered');
+      this._subscribeCallStatus((status) => this._handleLifecycleStatus(status));
     } catch (err) {
       console.error('Failed to answer call:', err);
       this.callState.fail(err.message || 'Failed to answer call');
@@ -195,9 +222,24 @@ export class WebRTCService {
 
   setupPeerEvents() {
     this.peerConnection.onTrack = (event) => {
-      const stream = event.streams?.[0];
-      if (stream) {
-        this.mediaManager.setRemoteStream(stream);
+      const aggregateStream = new MediaStream(
+        this.mediaManager.getRemoteStream()?.getTracks?.() || []
+      );
+
+      // Some browsers deliver a stream in event.streams[0], while others only
+      // deliver event.track. Build our own aggregate stream and replace the
+      // object on every track event so React receives a new reference and
+      // re-renders when audio/video tracks arrive at different times.
+      const sourceTracks = event.streams?.[0]?.getTracks?.() || [];
+      [...sourceTracks, event.track].filter(Boolean).forEach((track) => {
+        if (!aggregateStream.getTracks().some((existing) => existing.id === track.id)) {
+          aggregateStream.addTrack(track);
+        }
+      });
+
+      if (aggregateStream.getTracks().length > 0) {
+        this.mediaManager.setRemoteStream(aggregateStream);
+        this._notifyMediaUpdate();
       }
     };
 
@@ -212,6 +254,8 @@ export class WebRTCService {
 
     this.peerConnection.onConnectionStateChange = (state) => {
       if (state === 'connected' || state === 'completed') {
+        this._clearCallTimeout();
+        this._iceRestarting = false;
         this.callState.connect();
       } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
         this.callState.disconnect();
@@ -219,8 +263,13 @@ export class WebRTCService {
     };
 
     this.peerConnection.onIceConnectionStateChange = (state) => {
+      if (state === 'connected' || state === 'completed') {
+        this._clearCallTimeout();
+        this._iceRestarting = false;
+      }
       if (state === 'failed') {
         console.warn('ICE connection failed');
+        this._attemptIceRestart();
       }
     };
   }
@@ -235,17 +284,29 @@ export class WebRTCService {
     const unsubscribe = this.signaling.subscribeToSignals(
       this.currentCallId,
       {
-        onAnswer: async (answer) => {
-          // Caller receives the answer
+        onOffer: async (offer) => {
           try {
+            await this._handleRemoteOffer(offer);
+          } catch (e) {
+            console.error('Failed to apply remote offer:', e);
+          }
+        },
+        onAnswer: async (answer) => {
+          // Caller receives the initial answer and any later ICE-restart answer.
+          try {
+            const signalingState = this.peerConnection.getSignalingState();
+            const hasRemoteDescription = Boolean(this.peerConnection.getRemoteDescription());
+            if (hasRemoteDescription && signalingState !== 'have-local-offer') return;
             await this.peerConnection.setRemoteDescription(answer);
+            this._iceRestarting = false;
+            this._clearCallTimeout();
             this._flushPendingCandidates();
           } catch (e) {
             console.error('Failed to apply remote answer:', e);
           }
         },
-        onCandidate: (candidate) => {
-          this._handleRemoteCandidate(candidate);
+        onCandidate: (candidate, key) => {
+          this._handleRemoteCandidate(candidate, key);
         },
       },
       role
@@ -254,9 +315,55 @@ export class WebRTCService {
     this.unsubscribers.push(unsubscribe);
   }
 
+  async _handleRemoteOffer(offer) {
+    if (!offer || !this.peerConnection?.peerConnection) return;
+
+    const remoteDescription = this.peerConnection.getRemoteDescription();
+    if (!remoteDescription) return; // initial offer is applied directly by answerCall()
+    if (remoteDescription.sdp === offer.sdp) return; // duplicate value event
+
+    const signalingState = this.peerConnection.getSignalingState();
+    if (signalingState !== 'stable') {
+      console.warn('Ignoring remote offer while signaling state is:', signalingState);
+      return;
+    }
+
+    await this.peerConnection.setRemoteDescription(offer);
+    this._flushPendingCandidates();
+    await this.peerConnection.createAnswer();
+    await this.signaling.sendAnswer(this.currentCallId, this.peerConnection.getLocalDescription());
+  }
+
+  async _attemptIceRestart() {
+    const state = this.callState.status;
+    if (state !== CallStatus.CONNECTED && state !== CallStatus.DISCONNECTED) return;
+    if (!this.callState.initiator) return; // keep one side authoritative to avoid offer glare
+    if (!this.signaling || !this.currentCallId || !this.peerConnection?.peerConnection) return;
+    if (this._iceRestarting) return;
+
+    const now = Date.now();
+    if (now - this._lastIceRestartAt < ICE_RESTART_COOLDOWN_MS) return;
+
+    try {
+      this._iceRestarting = true;
+      this._lastIceRestartAt = now;
+      this.peerConnection.restartIce();
+      await this.peerConnection.createOffer({ iceRestart: true });
+      await this.signaling.sendOffer(this.currentCallId, this.peerConnection.getLocalDescription());
+    } catch (err) {
+      this._iceRestarting = false;
+      console.warn('ICE restart failed:', err);
+    }
+  }
+
   /** Buffer candidates that arrive before the remote description is set. */
-  async _handleRemoteCandidate(candidate) {
+  async _handleRemoteCandidate(candidate, key = null) {
     if (!candidate) return;
+
+    const candidateKey = key || this._candidateFingerprint(candidate);
+    if (candidateKey && this._seenRemoteCandidateKeys.has(candidateKey)) return;
+    if (candidateKey) this._seenRemoteCandidateKeys.add(candidateKey);
+
     try {
       const remoteDesc = this.peerConnection.getRemoteDescription();
       if (!remoteDesc) {
@@ -278,10 +385,86 @@ export class WebRTCService {
     });
   }
 
+  _candidateFingerprint(candidate) {
+    if (!candidate) return '';
+    return [
+      candidate.candidate || '',
+      candidate.sdpMid ?? '',
+      candidate.sdpMLineIndex ?? '',
+      candidate.usernameFragment ?? '',
+    ].join('|');
+  }
+
+  _notifyMediaUpdate() {
+    // CallContext synchronizes streams from the service when CallState emits.
+    // Media track events do not always coincide with a call-state transition,
+    // so force a no-op state notification when local/remote streams change.
+    this.callState.notify();
+  }
+
+  _startCallTimeout() {
+    this._clearCallTimeout();
+    this._callTimeoutId = window.setTimeout(async () => {
+      const status = this.callState.status;
+      if (status !== CallStatus.CALLING && status !== CallStatus.RINGING) return;
+
+      const callId = this.currentCallId;
+      this.callState.fail('Call timed out');
+      try {
+        if (this.signaling && callId) {
+          await this.signaling.endCall(callId);
+          await this.signaling.cleanSignals(callId);
+        }
+      } catch (err) {
+        console.warn('Failed to mark timed-out call as ended:', err);
+      } finally {
+        this._releaseResources({ resetState: false });
+      }
+    }, CALL_TIMEOUT_MS);
+  }
+
+  _clearCallTimeout() {
+    if (this._callTimeoutId) {
+      window.clearTimeout(this._callTimeoutId);
+      this._callTimeoutId = null;
+    }
+  }
+
   _subscribeCallStatus(onStatus) {
     if (!this.signaling || !this.currentCallId) return;
     const unsubscribe = this.signaling.subscribeToCallStatus(this.currentCallId, onStatus);
     this.unsubscribers.push(unsubscribe);
+  }
+
+  _handleLifecycleStatus(status) {
+    const current = this.callState.status;
+    if (status === 'answered') {
+      this._clearCallTimeout();
+      return;
+    }
+
+    if (current === CallStatus.IDLE || current === CallStatus.ENDED || current === CallStatus.FAILED) {
+      return;
+    }
+
+    if (status === 'rejected') {
+      this.callState.fail('Call rejected');
+      this._cleanSignalsForCurrentCall();
+      this._releaseResources({ resetState: false });
+    } else if (status === 'ended') {
+      this.callState.end();
+      this._cleanSignalsForCurrentCall();
+      this._releaseResources({ resetState: false });
+    }
+  }
+
+  _cleanSignalsForCurrentCall() {
+    const callId = this.currentCallId;
+    if (this.signaling && callId) {
+      this.signaling.cleanSignals(callId).catch((err) => {
+        console.warn('Failed to clean signaling room:', err);
+      });
+    }
   }
 
   async endCall() {
@@ -312,7 +495,9 @@ export class WebRTCService {
     }
   }
 
-  dispose() {
+  _releaseResources({ resetState = true } = {}) {
+    this._clearCallTimeout();
+
     // Stop media
     this.mediaManager.dispose();
 
@@ -325,19 +510,29 @@ export class WebRTCService {
     });
     this.unsubscribers = [];
 
-    if (this.signaling) {
-      this.signaling.unsubscribeAll();
-    }
+    // Do not call signaling.unsubscribeAll() here: the shared signaling
+    // instance also owns global listeners such as IncomingCallWatcher. Call
+    // specific subscriptions are tracked in this.unsubscribers above.
 
     // Cleanup resources
     this.cleanup.cleanupAll();
 
-    // Reset state
+    // Reset volatile call identifiers / buffers
     this.currentCallId = null;
     this.remoteUserId = null;
     this.pendingOffer = null;
     this._pendingCandidates = [];
-    this.callState.reset();
+    this._seenRemoteCandidateKeys = new Set();
+    this._iceRestarting = false;
+    this._lastIceRestartAt = 0;
+
+    if (resetState) {
+      this.callState.reset();
+    }
+  }
+
+  dispose() {
+    this._releaseResources({ resetState: true });
   }
 
   getStateSnapshot() {

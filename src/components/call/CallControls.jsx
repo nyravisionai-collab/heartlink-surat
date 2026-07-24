@@ -13,13 +13,16 @@ const CallControls = ({
   onToggleCamera,
   onEndCall,
   disabled = false,
+  showCamera = true,
   className = ''
 }) => {
   return (
     <div className={`flex items-center justify-center gap-4 md:gap-6 ${className}`}>
       <MuteButton muted={muted} onToggle={onToggleMute} disabled={disabled} />
       <EndCallButton onClick={onEndCall} disabled={disabled} />
-      <CameraButton videoOff={videoOff} onToggle={onToggleCamera} disabled={disabled} />
+      {showCamera && (
+        <CameraButton videoOff={videoOff} onToggle={onToggleCamera} disabled={disabled} />
+      )}
     </div>
   )
 }

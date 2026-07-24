@@ -27,6 +27,15 @@ const IncomingCallWatcher = () => {
   const handlingRef = useRef(null)
   // latest call status (avoids stale closures / constant re-subscriptions)
   const statusRef = useRef('idle')
+  // status listener for the incoming call currently displayed in the modal
+  const statusUnsubRef = useRef(null)
+
+  const clearIncomingStatusSubscription = () => {
+    if (statusUnsubRef.current) {
+      statusUnsubRef.current()
+      statusUnsubRef.current = null
+    }
+  }
 
   useEffect(() => {
     statusRef.current = typeof callState === 'object' ? callState?.status : callState
@@ -49,8 +58,12 @@ const IncomingCallWatcher = () => {
 
       const busyStatus = statusRef.current
       if (busyStatus && busyStatus !== CallStatus.IDLE && busyStatus !== CallStatus.ENDED && busyStatus !== CallStatus.FAILED) {
-        // User is already in a call: politely decline the new one.
-        try { await signaling.rejectCall(callId) } catch (e) { /* ignore */ }
+        // User is already in a call: politely decline the new one and
+        // remove its signaling room so stale offers/candidates do not linger.
+        try {
+          await signaling.rejectCall(callId)
+          await signaling.cleanSignals(callId)
+        } catch (e) { /* ignore */ }
         return
       }
 
@@ -83,6 +96,18 @@ const IncomingCallWatcher = () => {
 
         const callType = call.callType === 'video' ? 'video' : 'audio'
         prepareIncoming(callId, offer, callType, caller)
+        clearIncomingStatusSubscription()
+        statusUnsubRef.current = signaling.subscribeToCallStatus(callId, (status) => {
+          if (!mounted) return
+          if (status === 'ended' || status === 'rejected' || status === 'answered') {
+            clearIncomingStatusSubscription()
+            setIncoming(null)
+            handlingRef.current = null
+            if (status !== 'answered') {
+              service.dispose()
+            }
+          }
+        })
         setIncoming({ callId, callType, caller })
       } catch (e) {
         Logger.error('Incoming call handling failed', { error: e?.message })
@@ -93,6 +118,7 @@ const IncomingCallWatcher = () => {
     const unsubscribe = signaling.subscribeToIncomingCalls(handleIncoming)
     return () => {
       mounted = false
+      clearIncomingStatusSubscription()
       unsubscribe()
     }
   }, [currentUser, service, prepareIncoming])
@@ -103,11 +129,13 @@ const IncomingCallWatcher = () => {
     try {
       await answerCall(caller, callType)
       const path = callType === 'video' ? '/call/video' : '/call/voice'
+      clearIncomingStatusSubscription()
       setIncoming(null)
       handlingRef.current = null
       navigate(path, { replace: true })
     } catch (e) {
       Logger.error('Failed to accept call', { error: e?.message })
+      clearIncomingStatusSubscription()
       setIncoming(null)
       handlingRef.current = null
     }
@@ -120,6 +148,7 @@ const IncomingCallWatcher = () => {
     } catch (e) {
       Logger.error('Failed to reject call', { error: e?.message })
     }
+    clearIncomingStatusSubscription()
     setIncoming(null)
     handlingRef.current = null
   }
@@ -128,6 +157,7 @@ const IncomingCallWatcher = () => {
   useEffect(() => {
     const status = typeof callState === 'object' ? callState?.status : callState
     if (incoming && (status === CallStatus.IDLE || status === CallStatus.ENDED || status === CallStatus.FAILED)) {
+      clearIncomingStatusSubscription()
       setIncoming(null)
       handlingRef.current = null
     }

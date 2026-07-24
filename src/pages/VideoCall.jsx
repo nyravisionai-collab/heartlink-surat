@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCall } from '../contexts/CallContext'
 import RemoteVideo from '../components/call/RemoteVideo'
+import RemoteAudio from '../components/call/RemoteAudio'
 import LocalVideo from '../components/call/LocalVideo'
 import CallControls from '../components/call/CallControls'
 import ConnectionStatus from '../components/call/ConnectionStatus'
@@ -124,8 +125,9 @@ const VideoCall = () => {
 
   return (
     <div className="fixed inset-0 bg-dark-950 z-50 overflow-hidden">
-      {/* Remote Video */}
+      {/* Remote media */}
       <RemoteVideo stream={remoteStream} caller={remoteUser} className="absolute inset-0" />
+      <RemoteAudio stream={remoteStream} enabled={!remoteStream?.getVideoTracks?.().length} />
 
       {/* Local Video PIP */}
       <LocalVideo stream={localStream} visible={true} />
