@@ -88,21 +88,31 @@ export class WebRTCService {
       this.peerConnection.create();
       this.peerConnection.addLocalStream(this.mediaManager.getLocalStream());
 
-      // Setup event handlers + signaling
+      // Setup peer event handlers before creating the offer so local ICE
+      // candidates are captured as soon as gathering starts. Signaling
+      // subscriptions are attached after the call record exists because RTDB
+      // rules authorize /signals/$callId by checking /calls/$callId.
       this.setupPeerEvents();
-      this.setupSignaling('caller');
 
-      // Create and send offer
-      await this.peerConnection.createOffer();
-      await this.signaling.sendOffer(this.currentCallId, this.peerConnection.getLocalDescription());
-
-      // Create call record (written AFTER the offer so the receiver can fetch it)
+      // Create the call record before writing signaling data. RTDB security
+      // rules authorize /signals/$callId reads/writes by looking up
+      // /calls/$callId, so the room must exist before offer/candidates are
+      // written. Keep the status as "calling" while the offer is prepared,
+      // then flip to "ringing" to notify the receiver once the offer exists.
       await this.signaling.createCallRecord(this.currentCallId, {
         callerId: this.userId,
         receiverId: remoteUser.uid,
         callType,
         status: 'calling',
       });
+
+      this.setupSignaling('caller');
+
+      // Create and send offer
+      await this.peerConnection.createOffer();
+      await this.signaling.sendOffer(this.currentCallId, this.peerConnection.getLocalDescription());
+      await this.signaling.updateCallStatus(this.currentCallId, 'ringing');
+      this.callState.setStatus(CallStatus.RINGING);
 
       // Detect when the callee answers / rejects / ends the call
       this._subscribeCallStatus((status) => {

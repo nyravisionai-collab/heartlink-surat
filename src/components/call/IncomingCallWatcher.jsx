@@ -72,7 +72,7 @@ const IncomingCallWatcher = () => {
           Logger.warn('Could not load caller profile', { error: e?.message })
         }
 
-        // Pull the caller's SDP offer (it is written before the call record).
+        // Pull the caller's SDP offer (the caller creates the record before signaling).
         const offer = await signaling.getOffer(callId)
         if (!offer) {
           handlingRef.current = null
