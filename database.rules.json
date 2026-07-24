@@ -24,6 +24,7 @@
     },
     
     "calls": {
+      ".read": "auth != null && query.orderByChild == 'receiverId' && query.equalTo == auth.uid",
       ".indexOn": ["receiverId", "callerId", "status"],
       "$callId": {
         ".read": "auth != null && (data.child('callerId').val() == auth.uid || data.child('receiverId').val() == auth.uid)",
