@@ -14,7 +14,7 @@
         },
         
         "lastSeen": {
-          ".validate": "newData.isNumber() || newData.isNull()"
+          ".validate": "newData.isNumber()"
         },
         
         "$other": {
@@ -28,18 +28,18 @@
       ".indexOn": ["receiverId", "callerId", "status"],
       "$callId": {
         ".read": "auth != null && (data.child('callerId').val() == auth.uid || data.child('receiverId').val() == auth.uid)",
-        ".write": "auth != null && (newData.child('callerId').val() == auth.uid || newData.child('receiverId').val() == auth.uid)",
+        ".write": "auth != null && ((!data.exists() && newData.child('callerId').val() == auth.uid) || (data.exists() && (data.child('callerId').val() == auth.uid || data.child('receiverId').val() == auth.uid)))",
         
         "callerId": {
-          ".validate": "newData.isString() && newData.val().length > 0"
+          ".validate": "newData.isString() && newData.val().length > 0 && (!data.exists() || newData.val() == data.val())"
         },
         
         "receiverId": {
-          ".validate": "newData.isString() && newData.val().length > 0"
+          ".validate": "newData.isString() && newData.val().length > 0 && (!data.exists() || newData.val() == data.val())"
         },
         
         "callType": {
-          ".validate": "newData.isString() && (newData.val() == 'audio' || newData.val() == 'video')"
+          ".validate": "newData.isString() && (newData.val() == 'audio' || newData.val() == 'video') && (!data.exists() || newData.val() == data.val())"
         },
         
         "status": {
@@ -51,11 +51,11 @@
         },
         
         "createdAt": {
-          ".validate": "newData != null"
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() == data.val())"
         },
         
         "endedAt": {
-          ".validate": "newData != null"
+          ".validate": "newData.isNumber()"
         },
         
         "$other": {
@@ -67,7 +67,79 @@
     "signals": {
       "$callId": {
         ".read": "auth != null && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid)",
-        ".write": "auth != null && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid)"
+        ".write": "auth != null && !newData.exists() && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid)",
+
+        "offer": {
+          ".write": "auth != null && root.child('calls').child($callId).child('callerId').val() == auth.uid",
+          ".validate": "newData.hasChildren(['type', 'sdp', 'timestamp', 'senderId'])",
+          "type": {
+            ".validate": "newData.isString() && newData.val() == 'offer'"
+          },
+          "sdp": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "timestamp": {
+            ".validate": "newData.isNumber()"
+          },
+          "senderId": {
+            ".validate": "newData.isString() && newData.val() == auth.uid"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+
+        "answer": {
+          ".write": "auth != null && root.child('calls').child($callId).child('receiverId').val() == auth.uid",
+          ".validate": "newData.hasChildren(['type', 'sdp', 'timestamp', 'senderId'])",
+          "type": {
+            ".validate": "newData.isString() && newData.val() == 'answer'"
+          },
+          "sdp": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "timestamp": {
+            ".validate": "newData.isNumber()"
+          },
+          "senderId": {
+            ".validate": "newData.isString() && newData.val() == auth.uid"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+
+        "candidates": {
+          "$candidateId": {
+            ".write": "auth != null && (root.child('calls').child($callId).child('callerId').val() == auth.uid || root.child('calls').child($callId).child('receiverId').val() == auth.uid) && newData.child('senderId').val() == auth.uid",
+            ".validate": "newData.hasChildren(['candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment', 'timestamp', 'senderId'])",
+            "candidate": {
+              ".validate": "newData.isString() && newData.val().length > 0"
+            },
+            "sdpMid": {
+              ".validate": "newData.isString()"
+            },
+            "sdpMLineIndex": {
+              ".validate": "newData.isNumber()"
+            },
+            "usernameFragment": {
+              ".validate": "newData.isString()"
+            },
+            "timestamp": {
+              ".validate": "newData.isNumber()"
+            },
+            "senderId": {
+              ".validate": "newData.isString() && newData.val() == auth.uid"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+
+        "$other": {
+          ".validate": false
+        }
       }
     }
   }

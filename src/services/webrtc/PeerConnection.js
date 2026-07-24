@@ -107,12 +107,12 @@ export class PeerConnectionManager {
     });
   }
 
-  async createOffer() {
+  async createOffer(options = {}) {
     if (!this.peerConnection) {
       throw new Error('PeerConnection not initialized');
     }
     try {
-      const offer = await this.peerConnection.createOffer();
+      const offer = await this.peerConnection.createOffer(options);
       await this.peerConnection.setLocalDescription(offer);
       return this.peerConnection.localDescription;
     } catch (err) {
@@ -180,6 +180,16 @@ export class PeerConnectionManager {
 
   getIceConnectionState() {
     return this.peerConnection ? this.peerConnection.iceConnectionState : 'new';
+  }
+
+  getSignalingState() {
+    return this.peerConnection ? this.peerConnection.signalingState : 'closed';
+  }
+
+  restartIce() {
+    if (this.peerConnection && typeof this.peerConnection.restartIce === 'function') {
+      this.peerConnection.restartIce();
+    }
   }
 
   getLocalDescription() {

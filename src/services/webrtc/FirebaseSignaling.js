@@ -7,7 +7,7 @@
  */
 import { rtdb } from '../../firebase/config.js';
 import {
-  ref, set, get, onValue, off, push,
+  ref, set, get, onValue, onChildAdded, off, push,
   serverTimestamp, query, orderByChild, equalTo, limitToLast,
 } from 'firebase/database';
 
@@ -22,9 +22,9 @@ const toIceCandidate = (data) => {
   if (!data) return null;
   return {
     candidate: data.candidate,
-    sdpMid: data.sdpMid,
+    sdpMid: data.sdpMid === '' ? null : data.sdpMid,
     sdpMLineIndex: data.sdpMLineIndex,
-    usernameFragment: data.usernameFragment,
+    usernameFragment: data.usernameFragment === '' ? null : data.usernameFragment,
   };
 };
 
@@ -33,6 +33,7 @@ export class FirebaseSignaling {
     this.userId = userId;
     this.signalRef = null;
     this.callRef = null;
+    this.callId = null;
     this._listenerCleanups = [];
     // Legacy hooks (kept for backwards compatibility, no longer used internally)
     this.onOffer = null;
@@ -42,6 +43,7 @@ export class FirebaseSignaling {
   }
 
   initializeSignalRoom(callId) {
+    this.callId = callId;
     this.signalRef = ref(rtdb, `signals/${callId}`);
     this.callRef = ref(rtdb, `calls/${callId}`);
     return { signalRef: this.signalRef, callRef: this.callRef };
@@ -72,9 +74,9 @@ export class FirebaseSignaling {
     const newCandidateRef = push(candidatesRef);
     await set(newCandidateRef, {
       candidate: candidate.candidate,
-      sdpMid: candidate.sdpMid ?? null,
-      sdpMLineIndex: candidate.sdpMLineIndex ?? null,
-      usernameFragment: candidate.usernameFragment ?? null,
+      sdpMid: candidate.sdpMid ?? '',
+      sdpMLineIndex: candidate.sdpMLineIndex ?? 0,
+      usernameFragment: candidate.usernameFragment ?? '',
       timestamp: serverTimestamp(),
       senderId: this.userId,
     });
@@ -83,23 +85,39 @@ export class FirebaseSignaling {
   /**
    * Subscribe to signaling messages for an active call.
    * @param {string} callId
-   * @param {object} callbacks  { onAnswer, onCandidate }
+   * @param {object} callbacks  { onOffer, onAnswer, onCandidate }
    * @param {'caller'|'answerer'} role  caller expects the answer; answerer has
    *        already applied the offer directly (no onAnswer subscription needed).
    */
   subscribeToSignals(callId, callbacks = {}, role = 'caller') {
-    if (!this.signalRef) {
-      this.initializeSignalRoom(callId);
-    }
+    this.initializeSignalRoom(callId);
 
     const cleanups = [];
+
+    // The answerer listens for later caller re-offers (ICE restart /
+    // renegotiation). The initial offer is applied directly by answerCall();
+    // WebRTCService ignores duplicate offers by SDP/signaling state.
+    if (role === 'answerer' && callbacks.onOffer) {
+      const offerRef = ref(rtdb, `signals/${callId}/offer`);
+      let lastOfferSdp = null;
+      const offerCb = (snapshot) => {
+        const data = snapshot.val();
+        if (!data || data.senderId === this.userId || data.sdp === lastOfferSdp) return;
+        lastOfferSdp = data.sdp;
+        callbacks.onOffer(toSdpDescription(data));
+      };
+      onValue(offerRef, offerCb);
+      cleanups.push(() => off(offerRef, 'value', offerCb));
+    }
 
     // Only the caller subscribes for the answer.
     if (role === 'caller' && callbacks.onAnswer) {
       const answerRef = ref(rtdb, `signals/${callId}/answer`);
+      let lastAnswerSdp = null;
       const answerCb = (snapshot) => {
         const data = snapshot.val();
-        if (data && data.senderId !== this.userId) {
+        if (data && data.senderId !== this.userId && data.sdp !== lastAnswerSdp) {
+          lastAnswerSdp = data.sdp;
           callbacks.onAnswer(toSdpDescription(data));
         }
       };
@@ -109,20 +127,25 @@ export class FirebaseSignaling {
 
     if (callbacks.onCandidate) {
       const candidatesRef = ref(rtdb, `signals/${callId}/candidates`);
+      const seenCandidateKeys = new Set();
       const candidateCb = (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-        Object.entries(data).forEach(([key, candidate]) => {
-          if (candidate && candidate.senderId !== this.userId) {
-            callbacks.onCandidate(toIceCandidate(candidate), key);
-          }
-        });
+        const key = snapshot.key;
+        if (!key || seenCandidateKeys.has(key)) return;
+        seenCandidateKeys.add(key);
+
+        const candidate = snapshot.val();
+        if (candidate && candidate.senderId !== this.userId) {
+          callbacks.onCandidate(toIceCandidate(candidate), key);
+        }
       };
-      onValue(candidatesRef, candidateCb);
-      cleanups.push(() => off(candidatesRef, 'value', candidateCb));
+      onChildAdded(candidatesRef, candidateCb);
+      cleanups.push(() => off(candidatesRef, 'child_added', candidateCb));
     }
 
-    const unsubscribe = () => cleanups.forEach((fn) => fn && fn());
+    const unsubscribe = () => {
+      cleanups.forEach((fn) => fn && fn());
+      this._listenerCleanups = this._listenerCleanups.filter((fn) => fn !== unsubscribe);
+    };
     this._listenerCleanups.push(unsubscribe);
     return unsubscribe;
   }
@@ -146,6 +169,10 @@ export class FirebaseSignaling {
       Object.entries(calls).forEach(([callId, call]) => {
         if (!call) return;
         if (call.callerId === this.userId) return; // never call ourselves
+        const createdAt = call.createdAt || call.timestamp || 0;
+        const isStale = createdAt && Date.now() - createdAt > 5 * 60 * 1000;
+        if (isStale) return;
+
         const status = call.status;
         if (status === 'calling' || status === 'ringing') {
           onIncoming(callId, call);
@@ -154,7 +181,10 @@ export class FirebaseSignaling {
     };
 
     onValue(callsRef, cb);
-    const unsubscribe = () => off(callsRef, 'value', cb);
+    const unsubscribe = () => {
+      off(callsRef, 'value', cb);
+      this._listenerCleanups = this._listenerCleanups.filter((fn) => fn !== unsubscribe);
+    };
     this._listenerCleanups.push(unsubscribe);
     return unsubscribe;
   }
@@ -177,15 +207,16 @@ export class FirebaseSignaling {
       if (status) onStatus(status);
     };
     onValue(statusRef, cb);
-    const unsubscribe = () => off(statusRef, 'value', cb);
+    const unsubscribe = () => {
+      off(statusRef, 'value', cb);
+      this._listenerCleanups = this._listenerCleanups.filter((fn) => fn !== unsubscribe);
+    };
     this._listenerCleanups.push(unsubscribe);
     return unsubscribe;
   }
 
   async createCallRecord(callId, data) {
-    if (!this.callRef) {
-      this.initializeSignalRoom(callId);
-    }
+    this.initializeSignalRoom(callId);
     await set(this.callRef, {
       ...data,
       createdAt: serverTimestamp(),

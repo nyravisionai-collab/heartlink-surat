@@ -30,6 +30,11 @@ export class MediaManager {
     }
   }
 
+  setMediaMode({ audio = true, video = true } = {}) {
+    this.audioEnabled = Boolean(audio);
+    this.videoEnabled = Boolean(video);
+  }
+
   async startMediaStream(constraints = {}) {
     const defaultConstraints = {
       audio: {
@@ -46,9 +51,17 @@ export class MediaManager {
       },
     };
 
+    const mergeConstraint = (enabled, defaults, override) => {
+      if (!enabled || override === false) return false;
+      return {
+        ...defaults,
+        ...(override && typeof override === 'object' ? override : {}),
+      };
+    };
+
     const mergedConstraints = {
-      audio: this.audioEnabled ? { ...defaultConstraints.audio, ...constraints.audio } : false,
-      video: this.videoEnabled ? { ...defaultConstraints.video, ...constraints.video } : false,
+      audio: mergeConstraint(this.audioEnabled, defaultConstraints.audio, constraints.audio),
+      video: mergeConstraint(this.videoEnabled, defaultConstraints.video, constraints.video),
     };
 
     try {
@@ -61,12 +74,12 @@ export class MediaManager {
   }
 
   async startAudioOnly() {
-    this.videoEnabled = false;
+    this.setMediaMode({ audio: true, video: false });
     return this.startMediaStream({ video: false, audio: true });
   }
 
   async startVideoOnly() {
-    this.audioEnabled = false;
+    this.setMediaMode({ audio: false, video: true });
     return this.startMediaStream({ video: true, audio: false });
   }
 
@@ -74,8 +87,20 @@ export class MediaManager {
    * Reuse a pre-granted MediaStream (from PermissionManager) instead of calling getUserMedia again.
    * This avoids "Requested device not found" errors caused by rapid stop/restart cycles.
    */
-  reuseStream(stream) {
-    if (stream && (stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0)) {
+  reuseStream(stream, requirements = {}) {
+    if (!stream) return false;
+
+    const needsAudio = requirements.audio !== false;
+    const needsVideo = requirements.video === true;
+    const hasAudio = stream.getAudioTracks().some((track) => track.readyState !== 'ended');
+    const hasVideo = stream.getVideoTracks().some((track) => track.readyState !== 'ended');
+
+    if ((needsAudio && !hasAudio) || (needsVideo && !hasVideo)) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+
+    if (hasAudio || hasVideo) {
       this.localStream = stream;
       return true;
     }
@@ -144,6 +169,7 @@ export class MediaManager {
     this.remoteStream = null;
     this.videoDevices = [];
     this.audioDevices = [];
+    this.setMediaMode({ audio: true, video: true });
   }
 }
 
