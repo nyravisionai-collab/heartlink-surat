@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import { useUserDiscovery } from '../hooks/useUserDiscovery'
-import { setupPresence, getUserStatus } from '../firebase/presence'
+import { setupPresence, subscribeToAllStatuses } from '../firebase/presence'
 import { useCall } from '../contexts/CallContext'
 import { updateLastActive } from '../firebase/users'
 
@@ -15,14 +15,14 @@ const HomeDashboard = () => {
   const { currentUser, userProfile, logout } = useAuth()
   const { filteredUsers, searchQuery, loading, handleSearch, clearSearch } = useUserDiscovery()
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [userStatuses, setUserStatuses] = useState({})
+  const [allStatuses, setAllStatuses] = useState({})
 
   // Setup presence and update last active
   useEffect(() => {
     if (!currentUser) return
 
-    // Setup presence system
-    const cleanup = setupPresence(currentUser.uid)
+    // Setup presence system with display name
+    const cleanup = setupPresence(currentUser.uid, userProfile?.displayName)
 
     // Update last active timestamp
     updateLastActive(currentUser.uid)
@@ -30,28 +30,30 @@ const HomeDashboard = () => {
     return () => {
       cleanup()
     }
-  }, [currentUser])
+  }, [currentUser, userProfile?.displayName])
 
-  // Subscribe to user statuses
+  // Subscribe to ALL user statuses in one listener (real-time for everyone)
   useEffect(() => {
-    if (!filteredUsers || filteredUsers.length === 0) return
-
-    const unsubscribes = []
-
-    filteredUsers.forEach((user) => {
-      const unsubscribe = getUserStatus(user.uid, (status) => {
-        setUserStatuses((prev) => ({
-          ...prev,
-          [user.uid]: status,
-        }))
-      })
-      unsubscribes.push(unsubscribe)
+    const unsubscribe = subscribeToAllStatuses((statuses) => {
+      setAllStatuses(statuses || {})
     })
+    return () => unsubscribe()
+  }, [])
 
-    return () => {
-      unsubscribes.forEach((unsub) => unsub())
-    }
-  }, [filteredUsers])
+  // Split users into online and offline
+  const onlineUsers = useMemo(() => {
+    return filteredUsers.filter((user) => {
+      const status = allStatuses[user.uid]
+      return status?.isOnline === true
+    })
+  }, [filteredUsers, allStatuses])
+
+  const offlineUsers = useMemo(() => {
+    return filteredUsers.filter((user) => {
+      const status = allStatuses[user.uid]
+      return !status?.isOnline
+    })
+  }, [filteredUsers, allStatuses])
 
   const handleLogout = async () => {
     await logout()
@@ -67,7 +69,7 @@ const HomeDashboard = () => {
   }
 
   const formatLastSeen = (timestamp) => {
-    if (!timestamp) return 'Never'
+    if (!timestamp) return ''
     
     const date = new Date(timestamp)
     const now = new Date()
@@ -82,6 +84,78 @@ const HomeDashboard = () => {
     if (diffDays < 7) return `${diffDays}d ago`
     
     return date.toLocaleDateString()
+  }
+
+  // User card component (used in both online and offline sections)
+  const renderUserCard = (user) => {
+    const isOnline = allStatuses[user.uid]?.isOnline || false
+    
+    return (
+      <Card key={user.uid} className="p-4 hover:bg-dark-700/50 transition-all">
+        <div className="flex items-center gap-4">
+          {/* Avatar */}
+          <Avatar
+            src={user.photoURL}
+            name={user.displayName}
+            size="lg"
+            online={isOnline}
+          />
+          
+          {/* User Info - shows NAME only, no IDs */}
+          <div className="flex-1 min-w-0">
+            <h4 className="text-white font-semibold truncate">
+              {user.displayName}
+            </h4>
+            <div className="flex items-center gap-2 text-sm text-dark-400">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="truncate">{user.city || 'Unknown'}</span>
+            </div>
+            
+            {/* Online Status */}
+            <p className="text-xs mt-1">
+              {isOnline ? (
+                <span className="text-green-500 flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse"></span>
+                  Online
+                </span>
+              ) : (
+                <span className="text-dark-500">
+                  {allStatuses[user.uid]?.lastSeen
+                    ? `Last seen ${formatLastSeen(allStatuses[user.uid].lastSeen)}`
+                    : 'Offline'}
+                </span>
+              )}
+            </p>
+          </div>
+          
+          {/* Call Buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => handleAudioCall(user)}
+              className="p-3 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-xl transition-colors"
+              title={`Audio call ${user.displayName}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </button>
+            
+            <button
+              onClick={() => handleVideoCall(user)}
+              className="p-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-xl transition-colors"
+              title={`Video call ${user.displayName}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </Card>
+    )
   }
 
   return (
@@ -183,115 +257,71 @@ const HomeDashboard = () => {
           </div>
         </div>
 
-        {/* Users Section */}
-        <div>
-          <h3 className="text-lg font-semibold text-white mb-4">
-            {searchQuery ? 'Search Results' : 'All Users'} ({filteredUsers.length})
-          </h3>
-          
-          {loading ? (
-            // Loading skeleton
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="card p-4 animate-pulse">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-dark-700 rounded-full"></div>
-                    <div className="flex-1">
-                      <div className="h-4 bg-dark-700 rounded w-1/3 mb-2"></div>
-                      <div className="h-3 bg-dark-700 rounded w-1/4"></div>
-                    </div>
+        {loading ? (
+          // Loading skeleton
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="card p-4 animate-pulse">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-dark-700 rounded-full"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-dark-700 rounded w-1/3 mb-2"></div>
+                    <div className="h-3 bg-dark-700 rounded w-1/4"></div>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <Card className="p-8">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-dark-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <p className="text-dark-400">
-                  {searchQuery ? 'No users found' : 'No users yet'}
-                </p>
-                <p className="text-dark-500 text-sm mt-1">
-                  {searchQuery ? 'Try a different search term' : 'Invite friends to join Heart Link Surat'}
-                </p>
               </div>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredUsers.map((user) => {
-                const status = userStatuses[user.uid]
-                const isOnline = status?.isOnline || false
-                
-                return (
-                  <Card key={user.uid} className="p-4 hover:bg-dark-700/50 transition-all">
-                    <div className="flex items-center gap-4">
-                      {/* Avatar */}
-                      <Avatar
-                        src={user.photoURL}
-                        name={user.displayName}
-                        size="lg"
-                        online={isOnline}
-                      />
-                      
-                      {/* User Info */}
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-white font-semibold truncate">
-                          {user.displayName}
-                        </h4>
-                        <div className="flex items-center gap-2 text-sm text-dark-400">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                          <span>{user.city || 'Unknown'}</span>
-                        </div>
-                        
-                        {/* Online Status */}
-                        <p className="text-xs text-dark-500 mt-1">
-                          {isOnline ? (
-                            <span className="text-green-500 flex items-center gap-1">
-                              <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
-                              Online
-                            </span>
-                          ) : (
-                            `Last seen ${formatLastSeen(status?.lastSeen)}`
-                          )}
-                        </p>
-                      </div>
-                      
-                      {/* Call Buttons */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleAudioCall(user)}
-                          className="p-3 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-xl transition-colors"
-                          title="Audio Call"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                          </svg>
-                        </button>
-                        
-                        <button
-                          onClick={() => handleVideoCall(user)}
-                          className="p-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-xl transition-colors"
-                          title="Video Call"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </Card>
-                )
-              })}
+            ))}
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <Card className="p-8">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-dark-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <p className="text-dark-400">
+                {searchQuery ? 'No users found' : 'No users yet'}
+              </p>
+              <p className="text-dark-500 text-sm mt-1">
+                {searchQuery ? 'Try a different search term' : 'Invite friends to join Heart Link Surat'}
+              </p>
             </div>
-          )}
-        </div>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {/* Online Users Section - ALL visible at once */}
+            {onlineUsers.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                  Online — {onlineUsers.length}
+                </h3>
+                <div className="space-y-3">
+                  {onlineUsers.map(renderUserCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Offline Users Section */}
+            {offlineUsers.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-dark-400 mb-3 flex items-center gap-2">
+                  <span className="w-3 h-3 bg-dark-500 rounded-full"></span>
+                  Offline — {offlineUsers.length}
+                </h3>
+                <div className="space-y-3">
+                  {offlineUsers.map(renderUserCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Total count */}
+            <p className="text-center text-dark-500 text-sm pb-4">
+              {filteredUsers.length} total users
+            </p>
+          </div>
+        )}
       </main>
 
       {/* Click outside to close menu */}

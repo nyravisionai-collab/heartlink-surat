@@ -16,6 +16,10 @@
         "lastSeen": {
           ".validate": "newData.isNumber()"
         },
+
+        "displayName": {
+          ".validate": "newData.isString()"
+        },
         
         "$other": {
           ".validate": false
@@ -36,6 +40,14 @@
         
         "receiverId": {
           ".validate": "newData.isString() && newData.val().length > 0 && (!data.exists() || newData.val() == data.val())"
+        },
+
+        "callerName": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+
+        "receiverName": {
+          ".validate": "newData.isString() && newData.val().length > 0"
         },
         
         "callType": {

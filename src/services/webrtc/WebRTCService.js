@@ -16,6 +16,7 @@ const ICE_RESTART_COOLDOWN_MS = 10 * 1000;
 export class WebRTCService {
   constructor(userId) {
     this.userId = userId || null;
+    this.callerName = null;
     this.peerConnection = new PeerConnectionManager();
     this.mediaManager = new MediaManager();
     this.callState = new CallState();
@@ -36,11 +37,14 @@ export class WebRTCService {
     this._lastIceRestartAt = 0;
   }
 
-  async initialize(userId) {
+  async initialize(userId, displayName = null) {
     const nextUserId = userId || this.userId;
     if (!nextUserId) return;
 
     this.userId = nextUserId;
+    if (displayName) {
+      this.callerName = displayName;
+    }
     if (!this.signaling || this.signaling.userId !== nextUserId) {
       this.signaling = new FirebaseSignaling(nextUserId);
     }
@@ -98,7 +102,10 @@ export class WebRTCService {
       throw new Error('WebRTCService: Invalid remote user');
     }
 
-    this.currentCallId = callId || `call_${this.userId}_${remoteUser.uid}_${Date.now()}`;
+    // Use short call ID based on names, not long UIDs
+    const callerName = (this.callerName || this.userId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+    const receiverName = (remoteUser.displayName || remoteUser.uid).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+    this.currentCallId = callId || `call_${callerName}_${receiverName}_${Date.now().toString(36)}`;
     this.remoteUserId = remoteUser.uid;
     this.pendingOffer = null;
     this._pendingCandidates = [];
@@ -122,14 +129,12 @@ export class WebRTCService {
       // rules authorize /signals/$callId by checking /calls/$callId.
       this.setupPeerEvents();
 
-      // Create the call record before writing signaling data. RTDB security
-      // rules authorize /signals/$callId reads/writes by looking up
-      // /calls/$callId, so the room must exist before offer/candidates are
-      // written. Keep the status as "calling" while the offer is prepared,
-      // then flip to "ringing" to notify the receiver once the offer exists.
+      // Create the call record with display names (not long IDs)
       await this.signaling.createCallRecord(this.currentCallId, {
         callerId: this.userId,
         receiverId: remoteUser.uid,
+        callerName: this.callerName || 'User',
+        receiverName: remoteUser.displayName || 'User',
         callType,
         status: 'calling',
       });

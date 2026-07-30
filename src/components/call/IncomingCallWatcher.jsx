@@ -70,16 +70,21 @@ const IncomingCallWatcher = () => {
       handlingRef.current = callId
       try {
         // Resolve the caller's profile for the modal.
+        // Use callerName from call record (no more long IDs).
         let caller = {
           uid: call.callerId,
-          displayName: 'Unknown',
+          displayName: call.callerName || 'Unknown',
           photoURL: null,
           city: null,
         }
         try {
           const profile = await getUserById(call.callerId)
           if (profile?.success && profile.data) {
-            caller = { uid: call.callerId, ...profile.data }
+            caller = {
+              uid: call.callerId,
+              ...profile.data,
+              displayName: profile.data.displayName || call.callerName || 'Unknown',
+            }
           }
         } catch (e) {
           Logger.warn('Could not load caller profile', { error: e?.message })

@@ -30,6 +30,7 @@ export {
 export {
   setupPresence,
   getUserStatus,
+  subscribeToAllStatuses,
   updateLastActive,
   cleanupPresence,
 } from './presence'
@@ -40,4 +41,5 @@ export {
   searchUsers,
   updateLastActive as updateUserLastActive,
   getUserById,
+  getUserByName,
 } from './users'

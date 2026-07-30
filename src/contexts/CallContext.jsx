@@ -18,15 +18,15 @@ export const useCall = () => {
 }
 
 export const CallProvider = ({ children }) => {
-  const { currentUser } = useAuth()
+  const { currentUser, userProfile } = useAuth()
   const [service] = useState(() => new WebRTCService())
 
-  // Initialize WebRTCService with current user ID
+  // Initialize WebRTCService with current user ID and display name
   useEffect(() => {
     if (currentUser?.uid) {
-      service.initialize(currentUser.uid)
+      service.initialize(currentUser.uid, userProfile?.displayName || currentUser.displayName || 'User')
     }
-  }, [currentUser, service])
+  }, [currentUser, service, userProfile?.displayName])
   const [callState, setCallState] = useState(service.getStateSnapshot())
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)

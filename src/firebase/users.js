@@ -1,26 +1,29 @@
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore'
 import { db } from './config'
 
-// Subscribe to all users (except current user)
+// Subscribe to all users (except current user) with online status merged
 export const subscribeToUsers = (currentUserId, callback) => {
   const usersRef = collection(db, 'users')
   const q = query(usersRef, where('profileCompleted', '==', true))
   
   return onSnapshot(q, (snapshot) => {
     const users = []
-    snapshot.forEach((doc) => {
-      const userData = doc.data()
+    snapshot.forEach((docSnap) => {
+      const userData = docSnap.data()
       // Exclude current user
-      if (doc.id !== currentUserId) {
+      if (docSnap.id !== currentUserId) {
         users.push({
-          uid: doc.id,
+          uid: docSnap.id,
           ...userData,
         })
       }
     })
     
-    // Sort alphabetically by displayName
+    // Sort: online users first, then alphabetically by displayName
     users.sort((a, b) => {
+      const aOnline = a.isOnline ? 1 : 0
+      const bOnline = b.isOnline ? 1 : 0
+      if (aOnline !== bOnline) return bOnline - aOnline
       const nameA = a.displayName?.toLowerCase() || ''
       const nameB = b.displayName?.toLowerCase() || ''
       return nameA.localeCompare(nameB)
@@ -74,6 +77,31 @@ export const getUserById = async (userId) => {
       }
     }
     
+    return { success: false, error: 'User not found' }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+}
+
+// Get user by display name (searches all completed profiles)
+export const getUserByName = async (displayName) => {
+  try {
+    const { getDocs } = await import('firebase/firestore')
+    const usersRef = collection(db, 'users')
+    const q = query(usersRef, where('profileCompleted', '==', true))
+    const snapshot = await getDocs(q)
+    
+    let foundUser = null
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data()
+      if (data.displayName === displayName) {
+        foundUser = { uid: docSnap.id, ...data }
+      }
+    })
+    
+    if (foundUser) {
+      return { success: true, data: foundUser }
+    }
     return { success: false, error: 'User not found' }
   } catch (error) {
     return { success: false, error: error.message }
