@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
+import CallFriendModal from '../components/call/CallFriendModal'
 import { useUserDiscovery } from '../hooks/useUserDiscovery'
 import { setupPresence, subscribeToAllStatuses } from '../firebase/presence'
 import { useCall } from '../contexts/CallContext'
@@ -16,6 +17,7 @@ const HomeDashboard = () => {
   const { filteredUsers, searchQuery, loading, handleSearch, clearSearch } = useUserDiscovery()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [allStatuses, setAllStatuses] = useState({})
+  const [showCallFriendModal, setShowCallFriendModal] = useState(false)
 
   // Setup presence and update last active
   useEffect(() => {
@@ -231,6 +233,38 @@ const HomeDashboard = () => {
           <p className="text-dark-400">Ready to connect?</p>
         </div>
 
+        {/* Call a Friend Button — big prominent CTA */}
+        <button
+          onClick={() => setShowCallFriendModal(true)}
+          className="w-full mb-6 p-4 bg-gradient-to-r from-green-600/20 to-blue-600/20 hover:from-green-600/30 hover:to-blue-600/30 border border-green-500/30 rounded-2xl transition-all active:scale-[0.98] group"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/20 group-hover:shadow-green-500/30 transition-all">
+              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left">
+              <h3 className="text-white font-bold text-lg">📞 Call a Friend</h3>
+              <p className="text-dark-300 text-sm">
+                {onlineUsers.length > 0
+                  ? `${onlineUsers.length} friend${onlineUsers.length === 1 ? '' : 's'} online — tap to call!`
+                  : 'No friends online right now'}
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              {onlineUsers.length > 0 && (
+                <span className="px-3 py-1.5 bg-green-500/20 text-green-400 rounded-full text-xs font-bold animate-pulse">
+                  LIVE
+                </span>
+              )}
+              <svg className="w-5 h-5 text-dark-400 mt-2 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </button>
+
         {/* Search Bar */}
         <div className="mb-6">
           <div className="relative">
@@ -331,6 +365,21 @@ const HomeDashboard = () => {
           onClick={() => setShowUserMenu(false)}
         />
       )}
+
+      {/* Call a Friend Modal — shows ALL online users with usernames */}
+      <CallFriendModal
+        visible={showCallFriendModal}
+        onlineUsers={onlineUsers}
+        onClose={() => setShowCallFriendModal(false)}
+        onAudioCall={(user) => {
+          setShowCallFriendModal(false)
+          handleAudioCall(user)
+        }}
+        onVideoCall={(user) => {
+          setShowCallFriendModal(false)
+          handleVideoCall(user)
+        }}
+      />
     </div>
   )
 }
