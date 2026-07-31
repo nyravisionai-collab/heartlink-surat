@@ -1,8 +1,8 @@
 import { ref, set, onDisconnect, onValue, off, serverTimestamp } from 'firebase/database'
 import { rtdb } from './config'
 
-// Setup presence system for a user
-export const setupPresence = (uid) => {
+// Setup presence system for a user - stores display name instead of ID
+export const setupPresence = (uid, displayName = null) => {
   if (!uid) return () => {}
 
   const userStatusRef = ref(rtdb, `/status/${uid}`)
@@ -19,12 +19,14 @@ export const setupPresence = (uid) => {
       .set({
         isOnline: false,
         lastSeen: serverTimestamp(),
+        displayName: displayName || 'User',
       })
       .then(() => {
-        // Set the user as online
+        // Set the user as online with display name
         set(userStatusRef, {
           isOnline: true,
           lastSeen: serverTimestamp(),
+          displayName: displayName || 'User',
         })
       })
   })
@@ -36,11 +38,12 @@ export const setupPresence = (uid) => {
     set(userStatusRef, {
       isOnline: false,
       lastSeen: serverTimestamp(),
+      displayName: displayName || 'User',
     })
   }
 }
 
-// Get user's online status
+// Get user's online status (includes display name)
 export const getUserStatus = (uid, callback) => {
   if (!uid) return () => {}
 
@@ -48,7 +51,7 @@ export const getUserStatus = (uid, callback) => {
   
   const unsubscribe = onValue(userStatusRef, (snapshot) => {
     const data = snapshot.val()
-    callback(data || { isOnline: false, lastSeen: null })
+    callback(data || { isOnline: false, lastSeen: null, displayName: 'User' })
   })
 
   return unsubscribe
@@ -66,8 +69,20 @@ export const updateLastActive = async (uid, db) => {
   }
 }
 
+// Subscribe to ALL user statuses at once (returns a map of uid -> status)
+export const subscribeToAllStatuses = (callback) => {
+  const statusRef = ref(rtdb, '/status')
+
+  const unsubscribe = onValue(statusRef, (snapshot) => {
+    const allStatuses = snapshot.val() || {}
+    callback(allStatuses)
+  })
+
+  return unsubscribe
+}
+
 // Cleanup presence on logout
-export const cleanupPresence = (uid) => {
+export const cleanupPresence = (uid, displayName = null) => {
   if (!uid) return Promise.resolve()
 
   const userStatusRef = ref(rtdb, `/status/${uid}`)
@@ -75,5 +90,6 @@ export const cleanupPresence = (uid) => {
   return set(userStatusRef, {
     isOnline: false,
     lastSeen: serverTimestamp(),
+    displayName: displayName || 'User',
   })
 }

@@ -38,8 +38,8 @@ export const AuthProvider = ({ children }) => {
             const profileData = userDoc.data()
             setUserProfile(profileData)
             
-            // Setup presence system
-            setupPresence(user.uid)
+            // Setup presence system with display name (names, not IDs)
+            setupPresence(user.uid, profileData.displayName || user.displayName || 'User')
             
             // Update last active
             await updateDoc(doc(db, 'users', user.uid), {
@@ -66,8 +66,8 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       if (currentUser) {
-        // Cleanup presence
-        await cleanupPresence(currentUser.uid)
+        // Cleanup presence with display name
+        await cleanupPresence(currentUser.uid, userProfile?.displayName || 'User')
         
         // Sign out
         await signOut(auth)

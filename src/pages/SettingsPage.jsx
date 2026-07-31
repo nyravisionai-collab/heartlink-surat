@@ -135,7 +135,7 @@ const SettingsPage = () => {
       await deleteDoc(doc(db, 'users', currentUser.uid))
 
       // 3. Cleanup presence
-      await cleanupPresence(currentUser.uid)
+      await cleanupPresence(currentUser.uid, userProfile?.displayName || 'User')
 
       // 4. Delete Firebase Auth account
       await deleteUser(currentUser)
